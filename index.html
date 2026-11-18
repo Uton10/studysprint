@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudySprint — Hybrid AI Study Assistant</title>
+<meta name="description" content="StudySprint turns any text into summaries, flashcards and quizzes — running AI on-device with Gemini Nano when it can, and in the cloud with Gemini when it needs to. Powered by Firebase AI Logic hybrid inference." />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">⚡</div>
+    <div>
+      <h1>StudySprint</h1>
+      <p class="tagline">Hybrid AI study assistant — on-device when it can, cloud when it needs to.</p>
+    </div>
+  </div>
+  <div class="status-panel" id="statusPanel" aria-live="polite">
+    <div class="pill" id="pillDevice"><span class="dot dot-unknown"></span><span>On-device (Gemini Nano): checking…</span></div>
+    <div class="pill" id="pillFirebase"><span class="dot dot-unknown"></span><span>Firebase AI Logic: checking…</span></div>
+    <div class="pill" id="pillMode"><span class="dot dot-info"></span><span>Routing: Auto (hybrid)</span></div>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ============ LEFT: input & controls ============ -->
+  <section class="card input-card">
+    <div class="card-head">
+      <h2>1 · Your text</h2>
+      <div class="samples">
+        <span class="samples-label">Try a sample:</span>
+        <button class="chip" data-sample="short">Lecture notes (short)</button>
+        <button class="chip" data-sample="long">Long article (&gt;6k chars)</button>
+        <button class="chip" data-sample="meeting">Meeting notes</button>
+      </div>
+    </div>
+    <textarea id="inputText" rows="12" placeholder="Paste lecture notes, an article, a chapter, meeting notes — anything you need to learn fast…"></textarea>
+    <div class="input-meta">
+      <span id="charCount">0 characters</span>
+      <span id="routeHint" class="route-hint"></span>
+      <button class="link-btn" id="clearBtn">Clear</button>
+    </div>
+
+    <h2 class="step">2 · Pick a task</h2>
+    <div class="task-grid" id="taskGrid" role="radiogroup" aria-label="Task">
+      <button class="task-btn selected" data-task="summary"><span class="task-ico">📝</span>Summarize<small>TL;DR + key points</small></button>
+      <button class="task-btn" data-task="flashcards"><span class="task-ico">🃏</span>Flashcards<small>Q/A deck from the text</small></button>
+      <button class="task-btn" data-task="quiz"><span class="task-ico">❓</span>Quiz me<small>Practice questions</small></button>
+      <button class="task-btn" data-task="eli5"><span class="task-ico">🧒</span>Explain simply<small>ELI5 + analogy</small></button>
+      <button class="task-btn" data-task="translate"><span class="task-ico">🌐</span>Translate<small>Keep the meaning, change the language</small></button>
+      <button class="task-btn" data-task="actions"><span class="task-ico">✅</span>Action items<small>From meeting notes</small></button>
+    </div>
+
+    <div class="translate-row" id="translateRow" hidden>
+      <label for="targetLang">Translate to</label>
+      <select id="targetLang">
+        <option>Indonesian</option>
+        <option>Spanish</option>
+        <option>French</option>
+        <option>German</option>
+        <option>Japanese</option>
+        <option>English</option>
+      </select>
+    </div>
+
+    <h2 class="step">3 · Engine preference</h2>
+    <div class="segmented" id="prefGroup" role="radiogroup" aria-label="Engine preference">
+      <button class="seg selected" data-pref="auto">Auto (hybrid)</button>
+      <button class="seg" data-pref="device">On-device only</button>
+      <button class="seg" data-pref="cloud">Cloud only</button>
+    </div>
+    <p class="pref-note" id="prefNote">Auto routes short, private tasks to Gemini Nano on your device and escalates long documents &amp; heavy generation to cloud Gemini — via Firebase AI Logic <code>InferenceMode</code>s.</p>
+
+    <button class="run-btn" id="runBtn">⚡ Run with hybrid AI</button>
+    <p class="privacy-note">🔒 In Auto mode, short tasks never leave your device. Your text and history are stored only in this browser (localStorage).</p>
+  </section>
+
+  <!-- ============ RIGHT: results + routing log ============ -->
+  <section class="right-col">
+    <div class="card results-card">
+      <div class="card-head">
+        <h2>Results</h2>
+        <button class="link-btn" id="clearResultsBtn">Clear results</button>
+      </div>
+      <div id="results" class="results">
+        <div class="empty-state" id="emptyState">
+          <p class="empty-emoji">🚀</p>
+          <p>Paste some text, pick a task, and hit <strong>Run</strong>.<br/>Every answer shows <em>which engine</em> produced it — and why it was routed there.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card log-card">
+      <div class="card-head">
+        <h2>Hybrid routing log</h2>
+        <button class="link-btn" id="clearLogBtn">Clear log</button>
+      </div>
+      <ol id="routingLog" class="routing-log"></ol>
+    </div>
+
+    <div class="card library-card">
+      <div class="card-head">
+        <h2>Saved sessions (this browser)</h2>
+        <button class="link-btn" id="clearLibraryBtn">Clear all</button>
+      </div>
+      <ul id="library" class="library"></ul>
+    </div>
+
+    <details class="card how-card">
+      <summary><h2>How the hybrid routing works</h2></summary>
+      <div class="how-body">
+        <p>StudySprint is built on <strong>Firebase AI Logic</strong> with hybrid inference for the Web. One SDK call — <code>model.generateContent()</code> — can be served by two engines:</p>
+        <ul>
+          <li><strong>On-device:</strong> Gemini Nano, running inside Chrome via the Prompt API. Instant, free, offline, and private — your text never leaves the laptop.</li>
+          <li><strong>Cloud:</strong> Gemini (via the Gemini Developer API backend) for long documents and heavy structured generation.</li>
+        </ul>
+        <p>The router picks an <code>InferenceMode</code> per task: <code>PREFER_ON_DEVICE</code> for short tasks, <code>PREFER_IN_CLOUD</code> for long/heavy ones, and <code>ONLY_ON_DEVICE</code> / <code>ONLY_IN_CLOUD</code> when you force an engine. If Firebase isn't configured yet, the app runs in demo mode: on-device tasks call the same Prompt API directly, and cloud-bound tasks degrade to a clearly-labelled local extractive fallback — never a fake AI answer.</p>
+        <p>Requirements for on-device inference: Chrome 139+ on desktop with <code>chrome://flags/#prompt-api-for-gemini-nano-multimodal-input</code> enabled (the model downloads automatically on first use).</p>
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer class="footer">
+  <p>Built for <strong>#BuildHybridAI 2026</strong> · Firebase AI Logic · Gemini Nano (on-device) + Gemini (cloud) · Your data stays in your browser.</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
