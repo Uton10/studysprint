@@ -160,18 +160,15 @@ async function initFirebase() {
 
     const app = initializeApp(firebaseConfig);
 
-    // App Check is required by AI Logic. Locally we use the debug provider
-    // (debug tokens are accepted in hackathon submissions); in production,
-    // swap this for the reCAPTCHA provider — see firebase-config.js.
-    if (typeof self !== "undefined") self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    // App Check is required by AI Logic. We use the App Check debug token
+    // flow (debug tokens are accepted for hackathon submissions): the UUID
+    // below is registered in the Firebase console under App Check → Apps →
+    // StudySprint Web → Manage debug tokens. In production, swap this for
+    // the reCAPTCHA provider with a real site key — see firebase-config.js.
+    if (typeof self !== "undefined")
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = "a3480be5-2853-4d60-9a54-f1211c71d0eb";
     appCheckMod.initializeAppCheck(app, {
-      provider: new appCheckMod.CustomProvider({
-        getToken: () =>
-          Promise.resolve({
-            token: "studysprint-debug-token", // replaced by the real debug token flow in the console-driven setup
-            expireTimeMillis: Date.now() + 60 * 60 * 1000,
-          }),
-      }),
+      provider: new appCheckMod.ReCaptchaV3Provider("studysprint-debug-token-flow"),
       isTokenAutoRefreshEnabled: true,
     });
 
